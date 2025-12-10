@@ -1,5 +1,5 @@
 import PDFDocument from "pdfkit";
-import { connection } from "../db.js"; // tu conexión a MySQL
+import connection from "../config/db.js";
 
 export const generarReporte = (req, res) => {
   const { tipo } = req.params;
@@ -39,7 +39,10 @@ export const generarReporte = (req, res) => {
   }
 
   connection.query(sql, (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("Error al generar reporte:", err);
+      return res.status(500).json({ error: err.message });
+    }
 
     const doc = new PDFDocument();
     res.setHeader("Content-Type", "application/pdf");

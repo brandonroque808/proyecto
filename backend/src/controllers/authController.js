@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { connection } from "../db.js";
+import connection from "../config/db.js";
 
 // Registrar usuario
 export const registrarUsuario = async (req, res) => {
@@ -18,21 +18,34 @@ export const registrarUsuario = async (req, res) => {
     fuerza = "intermedia";
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-  connection.query(
-    "INSERT INTO usuarios (nombre, email, password, rol, fuerza) VALUES (?, ?, ?, ?, ?)",
-    [nombre, email, hashedPassword, rol || "usuario", fuerza],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ message: "Usuario registrado correctamente", fuerza });
-    }
-  );
+    connection.query(
+      "INSERT INTO usuarios (nombre, email, password, rol, fuerza) VALUES (?, ?, ?, ?, ?)",
+      [nombre, email, hashedPassword, rol || "usuario", fuerza],
+      (err, result) => {
+        if (err) {
+          console.error("Error al registrar usuario:", err);
+          return res.status(500).json({ error: err.message });
+        }
+        res.json({ 
+          message: "Usuario registrado correctamente", 
+          fuerza 
+        });
+      }
+    );
+  } catch (error) {
+    console.error("Error al encriptar password:", error);
+    res.status(500).json({ error: "Error al procesar la solicitud" });
+  }
 };
 
 // Login de usuario
 export const loginUsuario = (req, res) => {
   const { email, password } = req.body;
+
+  console.log("Intento de login:", email); // Para debug
 
   if (!email || !password) {
     return res.status(400).json({ error: "Email y contraseña son obligatorios" });
@@ -42,22 +55,42 @@ export const loginUsuario = (req, res) => {
     "SELECT * FROM usuarios WHERE email = ? AND activo = 1",
     [email],
     async (err, results) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (results.length === 0) return res.status(400).json({ error: "Usuario no encontrado" });
+      if (err) {
+        console.error("Error en query:", err);
+        return res.status(500).json({ error: err.message });
+      }
+      
+      if (results.length === 0) {
+        return res.status(400).json({ error: "Usuario no encontrado" });
+      }
 
       const usuario = results[0];
-      const match = await bcrypt.compare(password, usuario.password);
+      
+      try {
+        const match = await bcrypt.compare(password, usuario.password);
 
-      if (!match) return res.status(400).json({ error: "Contraseña incorrecta" });
+        if (!match) {
+          return res.status(400).json({ error: "Contraseña incorrecta" });
+        }
 
-      // Generar JWT
-      const token = jwt.sign(
-        { id: usuario.id, rol: usuario.rol, nombre: usuario.nombre },
-        process.env.JWT_SECRET || "secreto",
-        { expiresIn: "8h" }
-      );
+        // Generar JWT
+        const token = jwt.sign(
+          { id: usuario.id, rol: usuario.rol, nombre: usuario.nombre },
+          process.env.JWT_SECRET || "secreto",
+          { expiresIn: "8h" }
+        );
 
-      res.json({ token, nombre: usuario.nombre, rol: usuario.rol });
+        console.log("Login exitoso para:", email); // Para debug
+
+        res.json({ 
+          token, 
+          nombre: usuario.nombre, 
+          rol: usuario.rol 
+        });
+      } catch (error) {
+        console.error("Error al comparar passwords:", error);
+        res.status(500).json({ error: "Error al procesar la solicitud" });
+      }
     }
   );
 };
